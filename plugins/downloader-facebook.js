@@ -1,48 +1,68 @@
- import { igdl } from 'ruhend-scraper';
+import fetch from 'node-fetch';
 
-const handler = async (m, { text, conn, args, usedPrefix, command }) => {
+const handler = async (m, {conn, args, command, usedPrefix}) => {
+  // Verificar que se proporcionó una URL
   if (!args[0]) {
-    return conn.reply(m.chat, '*\`Ingresa El link Del vídeo a descargar 💛\`*', m, fake);
+    throw `⚠️ Ingrese un enlace de Facebook para descargar el video
+• *Ejemplo:* ${usedPrefix + command} https://www.facebook.com/watch?v=636541475139`;
   }
-
-  await conn.sendMessage(m.chat, { text: 'Cargando...' }, { quoted: m });
-  let res;
+  
+  // Verificar que la URL sea de Facebook
+  if (!args[0].match(/www.facebook.com|fb.watch/g)) {
+    throw `⚠️ Ingrese un enlace válido de Facebook para descargar el video
+• *Ejemplo:* ${usedPrefix + command} https://www.facebook.com/watch?v=636541475139`;
+  }
+  
+  // Indicar que se está procesando
+  await m.reply(`⌛`);
+  
   try {
-    res = await igdl(args[0]);
+    // Usar la API de siputzx para obtener los enlaces de descarga
+    const apiUrl = `https://api.siputzx.my.id/api/d/facebook?url=${encodeURIComponent(args[0])}`;
+    const response = await fetch(apiUrl);
+    const data = await response.json();
+    
+    // Verificar si la respuesta fue exitosa
+    if (!data.status) {
+      throw new Error('No se pudo obtener el video de Facebook');
+    }
+    
+    // Obtener la URL del video en la mejor calidad disponible
+    const videoOptions = data.data;
+    
+    if (!videoOptions || videoOptions.length === 0) {
+      throw new Error('No se encontraron enlaces de descarga');
+    }
+    
+    // Prefiere la resolución HD si está disponible, sino usa SD
+    const hdVideo = videoOptions.find(v => v.resolution.includes('HD'));
+    const sdVideo = videoOptions.find(v => v.resolution.includes('SD'));
+    const videoUrl = hdVideo ? hdVideo.url : (sdVideo ? sdVideo.url : videoOptions[0].url);
+    
+    // Enviar el video al chat
+    await conn.sendFile(
+      m.chat,
+      videoUrl,
+      'facebook_video.mp4',
+      `✅ *Video descargado exitosamente*\n📱 *Resolución:* ${hdVideo ? 'HD' : 'SD'}`,
+      m
+    );
+    
+    // Reacción de éxito
+    await m.reply(`✅`);
+    
   } catch (error) {
-    return conn.reply(m.chat, '*`Error al obtener datos. Verifica el enlace.`*', m);
-  }
-
-  let result = res.data;
-  if (!result || result.length === 0) {
-    return conn.reply(m.chat, '*`No se encontraron resultados.`*', m);
-  }
-
-  let data;
-  try {
-    data = result.find(i => i.resolution === "720p (HD)") || result.find(i => i.resolution === "360p (SD)");
-  } catch (error) {
-    return conn.reply(m.chat, '*`Error al procesar los datos.`*', m);
-  }
-
-  if (!data) {
-    return conn.reply(m.chat, '*`No se encontró una resolución adecuada.`*', m);
-  }
-
-  await conn.sendMessage(m.chat, { text: 'Descarga completa.' }, { quoted: m });
-  let video = data.url;
-
-  try {
-    await conn.sendMessage(m.chat, { video: { url: video }, caption: 'Vídeo descargado con éxito.', fileName: 'fb.mp4', mimetype: 'video/mp4' }, { quoted: m });
-  } catch (error) {
-    return conn.reply(m.chat, '*`Error al enviar el video.`*', m);
-  await conn.sendMessage(m.chat, { text: '❌' }, { quoted: m });
+    // Manejar errores
+    console.error('Error al descargar el video:', error);
+    await m.reply(`❌`);
+    m.reply(`⚠️ *Ocurrió un error al descargar el video*\n\nPor favor, intente con otro enlace o reporte este problema con el comando: #report`);
   }
 };
 
-handler.help = ['fb *<link>*'];
-handler.corazones = 2
-handler.tags = ['dl']
-handler.command = /^(fb|facebook|fbdl)$/i;
+// Configuración del comando
+handler.help = ['fb', 'facebook', 'fbdl'];
+handler.tags = ['downloader'];
+handler.command = /^(facebook|fb|facebookdl|fbdl)$/i;
+handler.register = false;
 
-export default handler;                                                                                                                                                                                                                                          
+export default handler;
